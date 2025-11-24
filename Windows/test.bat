@@ -104,7 +104,7 @@ echo.
 
 REM Test 6: Encrypted Backup
 echo [TEST 6] Testing encrypted backup...
-"%EXE_PATH%" backup test-device-encrypted "%BACKUP_DIR%-encrypted" --encrypt "test-password" >nul 2>&1
+"%EXE_PATH%" backup test-device-encrypted "%BACKUP_DIR%-encrypted" --encrypt "TestSecurePassword123!" >nul 2>&1
 if exist "%BACKUP_DIR%-encrypted\manifest.json" (
     echo [PASS] Encrypted backup created
     set /a PASSED+=1

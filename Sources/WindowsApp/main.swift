@@ -117,20 +117,16 @@ class WindowsBackupApp {
             // Generate encryption key from passphrase or create random key
             let encryptionKey: SymmetricKey
             if let pass = passphrase {
-                // Derive key from passphrase (simplified - in production use proper KDF)
-                var keyData = Data(pass.utf8)
-                // Pad or truncate to 32 bytes
-                if keyData.count < 32 {
-                    keyData.append(Data(repeating: 0, count: 32 - keyData.count))
-                } else if keyData.count > 32 {
-                    keyData = keyData.prefix(32)
-                }
-                encryptionKey = SymmetricKey(data: keyData)
+                // Use SHA-256 hash of passphrase as key (simple but deterministic)
+                // Note: In production, use proper KDF like PBKDF2 with salt
+                let hash = SHA256.hash(data: Data(pass.utf8))
+                encryptionKey = SymmetricKey(data: hash)
             } else {
                 encryptionKey = SymmetricKey(size: .bits256)
             }
             
-            // Create backup components
+            // Create backup components (for demonstration)
+            // In production, these would be used to process actual device data
             let _ = Chunker(chunkSize: 64 * 1024, encryptionKey: encryptionKey)
             let _ = try ResumableObjectWriter(root: outputURL)
             

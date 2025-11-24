@@ -137,7 +137,8 @@ Run-Test "Missing arguments handling" {
 
 # Test 10: Verify Non-existent Backup
 Run-Test "Verify non-existent backup" {
-    $output = & $exePath verify "C:\NonExistent\Backup" 2>&1
+    $nonExistentPath = Join-Path $env:TEMP "NonExistentBackup-$(Get-Random)"
+    $output = & $exePath verify $nonExistentPath 2>&1
     return $output -match "not found"
 }
 
