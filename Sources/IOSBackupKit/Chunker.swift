@@ -5,22 +5,22 @@ import Crypto
 import Compression
 #endif
 
-enum StorageError: Error {
+public enum StorageError: Error {
     case compressionFailed
     case encryptionFailed
 }
 
-final class Chunker {
+public final class Chunker {
     let chunkSize: Int
     let key: SymmetricKey  // AES key from CryptoKit
 
-    init(chunkSize: Int = 64 * 1024, encryptionKey: SymmetricKey) {
+    public init(chunkSize: Int = 64 * 1024, encryptionKey: SymmetricKey) {
         self.chunkSize = chunkSize
         self.key = encryptionKey
     }
 
     /// Returns array of (sha256Hex, encryptedData)
-    func chunkAndEncrypt(data: Data) throws -> [(String, Data)] {
+    public func chunkAndEncrypt(data: Data) throws -> [(String, Data)] {
         var results: [(String, Data)] = []
         var offset = 0
         while offset < data.count {

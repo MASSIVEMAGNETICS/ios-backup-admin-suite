@@ -4,20 +4,23 @@ This directory contains example scripts demonstrating how to use the iOS Backup 
 
 ## Running Examples
 
-To run the examples, you need to have the Swift Package built:
+### Method 1: Using the Built Executable (Recommended)
 
 ```bash
-# Build the package first
-cd ..
-swift build
+# Build the example
+swift build --product example
 
-# Then run an example
-swift Examples/basic-backup-restore.swift
+# Run it
+.build/debug/example
 ```
+
+### Method 2: Direct Swift Execution
+
+To run examples directly with Swift (without importing the module), you need to inline the code or use the Package.swift approach above.
 
 ## Available Examples
 
-### basic-backup-restore.swift
+### main.swift (basic-backup-restore)
 
 A complete example showing:
 - Creating test files
@@ -28,7 +31,8 @@ A complete example showing:
 
 **Run it:**
 ```bash
-swift Examples/basic-backup-restore.swift
+swift build --product example
+.build/debug/example
 ```
 
 **Expected output:**

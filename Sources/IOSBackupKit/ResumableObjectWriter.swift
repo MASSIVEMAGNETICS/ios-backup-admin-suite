@@ -1,18 +1,18 @@
 import Foundation
 import Crypto
 
-final class ResumableObjectWriter {
+public final class ResumableObjectWriter {
     let rootURL: URL // e.g., snapshotRoot from UIDocumentPicker
     let fileManager = FileManager.default
     let commitLogURL: URL
 
-    init(root: URL) throws {
+    public init(root: URL) throws {
         self.rootURL = root
         self.commitLogURL = root.appendingPathComponent("commit.log")
         try fileManager.createDirectory(at: root.appendingPathComponent("objects"), withIntermediateDirectories: true)
     }
 
-    func writeChunks(_ chunks: [(String, Data)]) throws {
+    public func writeChunks(_ chunks: [(String, Data)]) throws {
         // write each chunk as <hash>.chunk.tmp then rename to .chunk
         for (hash, encrypted) in chunks {
             let tmpURL = rootURL.appendingPathComponent("objects/\(hash).chunk.tmp")
@@ -29,7 +29,7 @@ final class ResumableObjectWriter {
         }
     }
 
-    func appendCommitLine(_ line: String) throws {
+    public func appendCommitLine(_ line: String) throws {
         let data = line.data(using: .utf8)!
         if fileManager.fileExists(atPath: commitLogURL.path) {
             if let handle = try? FileHandle(forWritingTo: commitLogURL) {
@@ -43,7 +43,7 @@ final class ResumableObjectWriter {
     }
 
     /// Replays commit log to find incomplete or partially written entries.
-    func repairIncompleteWrites() {
+    public func repairIncompleteWrites() {
         guard let data = try? Data(contentsOf: commitLogURL),
               let content = String(data: data, encoding: .utf8) else { return }
         let lines = content.split(separator: "\n")

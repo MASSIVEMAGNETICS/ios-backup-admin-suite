@@ -19,6 +19,11 @@ let package = Package(
         .executable(
             name: "restore-tool",
             targets: ["RestoreTool"]
+        ),
+        // Example demonstrating backup/restore
+        .executable(
+            name: "example",
+            targets: ["Example"]
         )
     ],
     dependencies: [
@@ -38,6 +43,12 @@ let package = Package(
             name: "RestoreTool",
             dependencies: ["IOSBackupKit"],
             path: "Sources/RestoreTool"
+        ),
+        // Example executable
+        .executableTarget(
+            name: "Example",
+            dependencies: ["IOSBackupKit"],
+            path: "Examples"
         ),
         // Tests
         .testTarget(
