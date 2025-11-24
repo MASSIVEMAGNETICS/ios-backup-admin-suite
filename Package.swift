@@ -24,6 +24,11 @@ let package = Package(
         .executable(
             name: "example",
             targets: ["Example"]
+        ),
+        // Windows Desktop Application
+        .executable(
+            name: "ios-backup-windows",
+            targets: ["WindowsApp"]
         )
     ],
     dependencies: [
@@ -49,6 +54,12 @@ let package = Package(
             name: "Example",
             dependencies: ["IOSBackupKit"],
             path: "Examples"
+        ),
+        // Windows Desktop Application
+        .executableTarget(
+            name: "WindowsApp",
+            dependencies: ["IOSBackupKit"],
+            path: "Sources/WindowsApp"
         ),
         // Tests
         .testTarget(
