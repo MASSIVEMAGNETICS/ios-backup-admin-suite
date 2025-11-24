@@ -28,7 +28,7 @@ public final class Chunker {
             let slice = data.subdata(in: offset..<end)
             // compress
             guard let comp = compress(data: slice) else { throw StorageError.compressionFailed }
-            // hash BEFORE encryption
+            // hash BEFORE encryption (computed on compressed data for deduplication)
             let hash = SHA256.hash(data: comp)
             let hex = hash.map { String(format: "%02x", $0) }.joined()
             // encrypt

@@ -22,7 +22,12 @@ struct RestoreToolCLI {
         // Derive encryption key from passphrase
         let key: SymmetricKey
         if !passphrase.isEmpty {
-            // Simple key derivation - in production use PBKDF2/Argon2
+            // WARNING: This uses simple SHA-256 for key derivation, which is vulnerable to
+            // rainbow table attacks. For production use, implement PBKDF2 with salt:
+            // let salt = ... // retrieve from backup metadata
+            // let key = try PBKDF2<SHA256>.deriveKey(from: passphrase, salt: salt, iterations: 100000)
+            // 
+            // For this demo/testing tool, we use simple hashing:
             let passphraseData = passphrase.data(using: .utf8)!
             let hash = SHA256.hash(data: passphraseData)
             key = SymmetricKey(data: hash)

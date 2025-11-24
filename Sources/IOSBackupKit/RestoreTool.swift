@@ -42,7 +42,7 @@ public final class BackupRestorer {
                 throw RestoreError.decompressionFailed(chunkHash)
             }
             
-            // Verify chunk hash
+            // Verify chunk hash (computed on compressed data before encryption, matching chunking process)
             let hash = SHA256.hash(data: decryptedCompressed)
             let hex = hash.map { String(format: "%02x", $0) }.joined()
             guard hex == chunkHash else {

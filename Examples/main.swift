@@ -5,6 +5,8 @@ import IOSBackupKit
 import Crypto
 
 // Example: Create and restore a simple backup
+// NOTE: This example uses force-unwrap (!) for brevity in demonstration.
+// In production code, use proper error handling with do-catch blocks.
 
 print("iOS Backup Admin Suite - Example")
 print("=================================\n")
@@ -15,9 +17,14 @@ let backupDir = tempDir.appendingPathComponent("example-backup-\(UUID().uuidStri
 let restoreDir = tempDir.appendingPathComponent("example-restore-\(UUID().uuidString)")
 let testDataDir = tempDir.appendingPathComponent("example-data-\(UUID().uuidString)")
 
-try! FileManager.default.createDirectory(at: backupDir, withIntermediateDirectories: true)
-try! FileManager.default.createDirectory(at: restoreDir, withIntermediateDirectories: true)
-try! FileManager.default.createDirectory(at: testDataDir, withIntermediateDirectories: true)
+do {
+    try FileManager.default.createDirectory(at: backupDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: restoreDir, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: testDataDir, withIntermediateDirectories: true)
+} catch {
+    print("❌ Error creating directories: \(error)")
+    exit(1)
+}
 
 print("📁 Created directories:")
 print("  Backup: \(backupDir.path)")

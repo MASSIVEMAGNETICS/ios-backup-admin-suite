@@ -5,6 +5,9 @@ public final class ResumableObjectWriter {
     let rootURL: URL // e.g., snapshotRoot from UIDocumentPicker
     let fileManager = FileManager.default
     let commitLogURL: URL
+    
+    /// Errors or warnings detected during operations
+    public var warnings: [String] = []
 
     public init(root: URL) throws {
         self.rootURL = root
@@ -54,9 +57,13 @@ public final class ResumableObjectWriter {
                 let hash = String(parts[1])
                 let finalURL = rootURL.appendingPathComponent("objects/\(hash).chunk")
                 if !fileManager.fileExists(atPath: finalURL.path) {
-                    // mark for re-upload/recreation by upstream logic
-                    // for now log
-                    print("Missing chunk \(hash) - needs reupload")
+                    // Collect warning for upstream handling
+                    let warning = "Missing chunk \(hash) - needs reupload"
+                    warnings.append(warning)
+                    // Also print for debugging, but this should be handled by caller
+                    #if DEBUG
+                    print(warning)
+                    #endif
                 }
             }
         }
