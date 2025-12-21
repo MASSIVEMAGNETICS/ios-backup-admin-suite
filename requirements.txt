@@ -1,0 +1,7 @@
+PySide6
+pymobiledevice3
+pyicloud
+cryptography
+torch
+numpy<2.0.0
+pyinstaller
