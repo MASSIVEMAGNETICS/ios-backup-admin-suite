@@ -42,6 +42,10 @@ class WindowsBackupApp {
             
           verify <backup-path>
             Verify integrity of a backup
+
+          explore <backup-path> [search-term] [--deleted]
+            Explore an iOS backup (iTunes/Standard format) and search for files.
+            Use --deleted to scan for deleted content in databases.
             
           help
             Show this help message
@@ -51,6 +55,7 @@ class WindowsBackupApp {
           ios-backup-windows.exe list-devices
           ios-backup-windows.exe restore C:\\Backups\\iPhone my-iphone
           ios-backup-windows.exe verify C:\\Backups\\iPhone
+          ios-backup-windows.exe explore C:\\Users\\You\\AppData\\Roaming\\Apple Computer\\MobileSync\\Backup\\<UDID>
         
         """)
     }
@@ -74,6 +79,8 @@ class WindowsBackupApp {
             handleListDevices()
         case "verify":
             handleVerify(arguments: Array(arguments.dropFirst(2)))
+        case "explore":
+            handleExplore(arguments: Array(arguments.dropFirst(2)))
         case "help", "--help", "-h":
             printHelp()
         default:
@@ -261,6 +268,76 @@ class WindowsBackupApp {
             
         } catch {
             print("❌ Verification failed: \(error)")
+        }
+    }
+
+    private func handleExplore(arguments: [String]) {
+        print("\n🔍 Exploring iOS Backup...")
+
+        guard arguments.count >= 1 else {
+            print("❌ Error: Missing backup path")
+            print("Usage: explore <backup-path> [search-term] [--deleted]")
+            return
+        }
+
+        let backupPath = arguments[0]
+        let searchTerm = arguments.count > 1 && !arguments[1].starts(with: "--") ? arguments[1] : nil
+        let checkDeleted = arguments.contains("--deleted")
+
+        do {
+            let reader = try StandardBackupReader(backupPath: backupPath)
+            print("✅ Connected to Manifest.db")
+
+            let files = try reader.listFiles(limit: 5000)
+            print("📂 Found \(files.count) files in manifest (showing first 5000)")
+
+            var matchCount = 0
+            for file in files {
+                let fullPath = "\(file.domain)/\(file.relativePath)"
+                if let term = searchTerm {
+                    if fullPath.localizedCaseInsensitiveContains(term) {
+                        print("  📄 \(fullPath)")
+                        matchCount += 1
+
+                        // Check for deleted content if requested
+                        if checkDeleted && (fullPath.hasSuffix("sms.db") || fullPath.hasSuffix("AddressBook.sqlitedb")) {
+                            print("    🔎 Scanning for deleted content in \(fullPath)...")
+                            if let realPath = reader.getActualPath(for: file.id) {
+                                let hits = try DeletedContentScanner.scanFile(path: realPath)
+                                if !hits.isEmpty {
+                                    print("    ⚠️  Found \(hits.count) potential deleted artifacts:")
+                                    for hit in hits.prefix(5) {
+                                        print("      - \(hit)")
+                                    }
+                                    if hits.count > 5 { print("      ... and \(hits.count - 5) more") }
+                                } else {
+                                    print("    (No obvious deleted text artifacts found)")
+                                }
+                            } else {
+                                print("    ❌ File not found on disk")
+                            }
+                        }
+                    }
+                } else {
+                     // No search term, just list a few
+                     if matchCount < 20 {
+                        print("  📄 \(fullPath)")
+                        matchCount += 1
+                     }
+                }
+            }
+
+            if searchTerm == nil {
+                print("  ... use a search term to see more files.")
+            } else if matchCount == 0 {
+                print("  (No files matched '\(searchTerm!)')")
+            }
+
+        } catch {
+            print("❌ Exploration failed: \(error)")
+            if (error as NSError).code == 404 {
+                 print("   Verify that the path is an iTunes-style iOS backup folder containing Manifest.db")
+            }
         }
     }
 }
