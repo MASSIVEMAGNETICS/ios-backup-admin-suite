@@ -28,7 +28,7 @@ public class StandardBackupReader {
         self.db = try Connection(manifestPath, readonly: true)
     }
 
-    public func listFiles(limit: Int = 1000) throws -> [BackupFile] {
+    public func listFiles(limit: Int = 1000, search: String? = nil) throws -> [BackupFile] {
         let files = Table("Files")
         let fileID = Expression<String>("fileID")
         let domain = Expression<String>("domain")
@@ -38,8 +38,20 @@ public class StandardBackupReader {
 
         var result: [BackupFile] = []
 
-        // Only select what we need
-        let query = files.limit(limit)
+        var query = files
+
+        if let searchTerm = search {
+             // Search in both domain and relativePath
+             // Note: SQLite.swift uses like() for case-insensitive matching if collation allows,
+             // but strictly speaking standard LIKE is case-insensitive for ASCII.
+             let likeTerm = "%\(searchTerm)%"
+             query = query.filter(relativePath.like(likeTerm) || domain.like(likeTerm))
+             // Increase limit significantly if searching, or remove it?
+             // Let's keep a higher safety limit for search results.
+             query = query.limit(500)
+        } else {
+             query = query.limit(limit)
+        }
 
         for f in try db.prepare(query) {
             result.append(BackupFile(

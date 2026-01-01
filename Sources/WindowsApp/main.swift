@@ -288,49 +288,40 @@ class WindowsBackupApp {
             let reader = try StandardBackupReader(backupPath: backupPath)
             print("✅ Connected to Manifest.db")
 
-            let files = try reader.listFiles(limit: 5000)
-            print("📂 Found \(files.count) files in manifest (showing first 5000)")
+            let files = try reader.listFiles(limit: 5000, search: searchTerm)
+            print("📂 Found \(files.count) files matching criteria")
 
             var matchCount = 0
             for file in files {
                 let fullPath = "\(file.domain)/\(file.relativePath)"
-                if let term = searchTerm {
-                    if fullPath.localizedCaseInsensitiveContains(term) {
-                        print("  📄 \(fullPath)")
-                        matchCount += 1
+                print("  📄 \(fullPath)")
+                matchCount += 1
 
-                        // Check for deleted content if requested
-                        if checkDeleted && (fullPath.hasSuffix("sms.db") || fullPath.hasSuffix("AddressBook.sqlitedb")) {
-                            print("    🔎 Scanning for deleted content in \(fullPath)...")
-                            if let realPath = reader.getActualPath(for: file.id) {
-                                let hits = try DeletedContentScanner.scanFile(path: realPath)
-                                if !hits.isEmpty {
-                                    print("    ⚠️  Found \(hits.count) potential deleted artifacts:")
-                                    for hit in hits.prefix(5) {
-                                        print("      - \(hit)")
-                                    }
-                                    if hits.count > 5 { print("      ... and \(hits.count - 5) more") }
-                                } else {
-                                    print("    (No obvious deleted text artifacts found)")
-                                }
-                            } else {
-                                print("    ❌ File not found on disk")
+                // Check for deleted content if requested
+                // Only scan relevant databases to save time/memory
+                if checkDeleted && (fullPath.hasSuffix("sms.db") || fullPath.hasSuffix("AddressBook.sqlitedb")) {
+                    print("    🔎 Scanning for deleted content in \(fullPath)...")
+                    if let realPath = reader.getActualPath(for: file.id) {
+                        let hits = try DeletedContentScanner.scanFile(path: realPath)
+                        if !hits.isEmpty {
+                            print("    ⚠️  Found \(hits.count) potential deleted artifacts:")
+                            for hit in hits.prefix(5) {
+                                print("      - \(hit)")
                             }
+                            if hits.count > 5 { print("      ... and \(hits.count - 5) more") }
+                        } else {
+                            print("    (No obvious deleted text artifacts found)")
                         }
+                    } else {
+                        print("    ❌ File not found on disk")
                     }
-                } else {
-                     // No search term, just list a few
-                     if matchCount < 20 {
-                        print("  📄 \(fullPath)")
-                        matchCount += 1
-                     }
                 }
             }
 
-            if searchTerm == nil {
-                print("  ... use a search term to see more files.")
+            if searchTerm == nil && matchCount > 0 {
+                print("  ... (showing first few files)")
             } else if matchCount == 0 {
-                print("  (No files matched '\(searchTerm!)')")
+                print("  (No files matched criteria)")
             }
 
         } catch {

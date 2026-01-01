@@ -51,6 +51,15 @@ public class DeletedContentScanner {
             }
         }
 
+        // Handle trailing string if file ends with printable text
+        if currentStringBytes.count >= minLength {
+            if let string = String(bytes: currentStringBytes, encoding: .ascii) {
+                if !isNoise(string) {
+                    results.append(ScannedMessage(content: string, offset: startIndex, context: "ASCII"))
+                }
+            }
+        }
+
         return results
     }
 
