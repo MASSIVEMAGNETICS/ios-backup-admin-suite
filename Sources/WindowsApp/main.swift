@@ -58,6 +58,9 @@ class WindowsBackupApp {
     func run(arguments: [String]) {
         printBanner()
         
+        // Automatic scan for backups on startup
+        BackupScanner.scanForBackups()
+
         guard arguments.count > 1 else {
             printHelp()
             return
