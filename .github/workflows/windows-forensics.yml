@@ -1,0 +1,61 @@
+name: Windows Forensics Suite
+
+on:
+  push:
+    branches:
+      - main
+      - agent/windows-forensics-suite
+    paths:
+      - "Windows/ForgeRecover/**"
+      - ".github/workflows/windows-forensics.yml"
+  pull_request:
+    paths:
+      - "Windows/ForgeRecover/**"
+      - ".github/workflows/windows-forensics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-publish:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore CLI
+        run: dotnet restore Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj
+
+      - name: Restore tests
+        run: dotnet restore Windows/ForgeRecover/tests/ForgeRecover.Core.Tests/ForgeRecover.Core.Tests.csproj
+
+      - name: Build CLI
+        run: dotnet build Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test Windows/ForgeRecover/tests/ForgeRecover.Core.Tests/ForgeRecover.Core.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=forge-recover-tests.trx" --collect "XPlat Code Coverage"
+
+      - name: Publish Windows x64 executable
+        run: dotnet publish Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj --configuration Release --runtime win-x64 --self-contained false --no-restore --output artifacts/forge-recover-win-x64
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-recover-win-x64
+          path: artifacts/forge-recover-win-x64
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-recover-test-results
+          path: Windows/ForgeRecover/tests/ForgeRecover.Core.Tests/TestResults
+          if-no-files-found: warn
