@@ -65,7 +65,7 @@ To produce a larger package that includes the .NET runtime:
 Published output:
 
 ```text
-Windows\ForgeRecover\artifacts\forge-recover-windows-win-x64\
+Windows\ForgeRecover\artifacts\forge-recover-windows-x64\
 ├── cli\forge-recover.exe
 ├── workbench\ForgeRecover.Workbench.exe
 ├── README.md
