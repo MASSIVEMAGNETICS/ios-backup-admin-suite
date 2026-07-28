@@ -1,0 +1,286 @@
+<Window x:Class="ForgeRecover.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ForgeRecover — iOS Forensic Workbench"
+        Width="1440"
+        Height="900"
+        MinWidth="1120"
+        MinHeight="700"
+        WindowStartupLocation="CenterScreen"
+        Closing="Window_Closing">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="76" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="34" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#111820" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <Grid Margin="20,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="FORGERECOVER" FontSize="25" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="Authorized iOS backup acquisition, evidence preservation, artifact recovery, preview, and selective export"
+                               Foreground="{StaticResource MutedBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <TextBlock Text="Massive Magnetics" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                    <TextBlock Text="Evidence-first. No fake recovery claims." Foreground="{StaticResource MutedBrush}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="390" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="{StaticResource PanelBrush}" Padding="14">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="ConfigurationPanel">
+                        <GroupBox Header="1. Backup source">
+                            <StackPanel>
+                                <TextBlock Text="Discovered Apple Devices / iTunes backups" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,5" />
+                                <ComboBox x:Name="BackupComboBox"
+                                          ItemsSource="{Binding Backups}"
+                                          DisplayMemberPath="RootPath"
+                                          MinHeight="34" />
+                                <WrapPanel Margin="0,6,0,0">
+                                    <Button Content="Refresh" Click="RefreshBackups_Click" />
+                                    <Button Content="Browse backup…" Click="BrowseBackup_Click" />
+                                </WrapPanel>
+                                <TextBlock x:Name="BackupDetailsText"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="4,6,0,0" />
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="2. Case identity">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Row="0" Text="Case name" VerticalAlignment="Center" />
+                                <TextBox x:Name="CaseNameTextBox" Grid.Row="0" Grid.Column="1" Text="Authorized iPhone Review" />
+                                <TextBlock Grid.Row="1" Text="Examiner" VerticalAlignment="Center" />
+                                <TextBox x:Name="ExaminerTextBox" Grid.Row="1" Grid.Column="1" Margin="0,5,0,0" />
+                                <TextBlock Grid.Row="2" Text="Cases folder" VerticalAlignment="Center" />
+                                <Grid Grid.Row="2" Grid.Column="1" Margin="0,5,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="CasesOutputTextBox" />
+                                    <Button Grid.Column="1" Content="…" Click="BrowseCasesOutput_Click" Padding="10,6" />
+                                </Grid>
+                                <TextBlock Grid.Row="3" Text="Notes" VerticalAlignment="Top" Margin="0,10,0,0" />
+                                <TextBox x:Name="NotesTextBox"
+                                         Grid.Row="3"
+                                         Grid.Column="1"
+                                         Margin="0,5,0,0"
+                                         Height="62"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap" />
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox Header="3. Artifact plugins">
+                            <UniformGrid Columns="2">
+                                <CheckBox x:Name="MessagesCheckBox" Content="Messages" IsChecked="True" />
+                                <CheckBox x:Name="CallsCheckBox" Content="Call history" IsChecked="True" />
+                                <CheckBox x:Name="ContactsCheckBox" Content="Contacts" IsChecked="True" />
+                                <CheckBox x:Name="MediaCheckBox" Content="Photos / videos" IsChecked="True" />
+                            </UniformGrid>
+                        </GroupBox>
+
+                        <Button x:Name="RunPipelineButton"
+                                Content="CREATE VERIFIED CASE + ANALYZE"
+                                Style="{StaticResource PrimaryButton}"
+                                FontSize="14"
+                                Padding="14,11"
+                                Click="RunPipeline_Click" />
+                        <Button x:Name="CancelButton"
+                                Content="Cancel active operation"
+                                IsEnabled="False"
+                                Click="Cancel_Click" />
+
+                        <GroupBox Header="Case verification" Margin="0,14,0,12">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="CaseRootTextBox" />
+                                    <Button Grid.Column="1" Content="…" Click="BrowseCaseRoot_Click" Padding="10,6" />
+                                </Grid>
+                                <WrapPanel Margin="0,6,0,0">
+                                    <Button x:Name="VerifyCaseButton" Content="Verify hashes" Click="VerifyCase_Click" />
+                                    <Button Content="Open case folder" Click="OpenCaseFolder_Click" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <GroupBox Header="Authorized device acquisition">
+                            <StackPanel>
+                                <TextBlock Text="libimobiledevice tools folder" Foreground="{StaticResource MutedBrush}" />
+                                <Grid Margin="0,4,0,7">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="ToolDirectoryTextBox" />
+                                    <Button Grid.Column="1" Content="…" Click="BrowseToolDirectory_Click" Padding="10,6" />
+                                </Grid>
+                                <TextBlock Text="Paired device" Foreground="{StaticResource MutedBrush}" />
+                                <ComboBox x:Name="DeviceComboBox" MinHeight="34" Margin="0,4,0,7" />
+                                <Button x:Name="DetectDevicesButton" Content="Detect paired devices" Click="DetectDevices_Click" />
+                                <TextBlock Text="Acquisition folder" Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0" />
+                                <Grid Margin="0,4,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="AcquisitionOutputTextBox" />
+                                    <Button Grid.Column="1" Content="…" Click="BrowseAcquisitionOutput_Click" Padding="10,6" />
+                                </Grid>
+                                <Button x:Name="AcquireButton"
+                                        Content="Acquire full logical backup"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Click="AcquireDevice_Click" />
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="{StaticResource BorderBrush}" />
+
+            <Border Grid.Column="2" Padding="14" Background="{StaticResource WindowBrush}">
+                <TabControl x:Name="MainTabs">
+                    <TabItem Header="Artifact Preview">
+                        <Grid Background="{StaticResource PanelBrush}" Margin="0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid Margin="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Search" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox x:Name="ArtifactSearchTextBox"
+                                         Grid.Column="1"
+                                         TextChanged="ArtifactSearch_TextChanged" />
+                                <TextBlock x:Name="ArtifactCountText"
+                                           Grid.Column="2"
+                                           VerticalAlignment="Center"
+                                           Margin="12,0,0,0"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           Text="0 artifacts" />
+                            </Grid>
+
+                            <DataGrid x:Name="ArtifactsDataGrid"
+                                      Grid.Row="1"
+                                      ItemsSource="{Binding ArtifactsView}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      SelectionMode="Extended"
+                                      GridLinesVisibility="Horizontal"
+                                      Background="#111820"
+                                      Foreground="#111827"
+                                      RowBackground="#F8FAFC"
+                                      AlternatingRowBackground="#E8EEF4"
+                                      BorderBrush="{StaticResource BorderBrush}"
+                                      HeadersVisibility="Column">
+                                <DataGrid.Columns>
+                                    <DataGridCheckBoxColumn Header="Pick" Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="52" />
+                                    <DataGridTextColumn Header="UTC" Binding="{Binding Timestamp}" Width="145" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="85" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Primary" Binding="{Binding Primary}" Width="160" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Secondary" Binding="{Binding Secondary}" Width="120" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Direction" Binding="{Binding Direction}" Width="85" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Body / Value" Binding="{Binding Body}" Width="2*" IsReadOnly="True" />
+                                    <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="2*" IsReadOnly="True" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <WrapPanel Grid.Row="2" Margin="7">
+                                <Button Content="Select visible" Click="SelectVisible_Click" />
+                                <Button Content="Clear selection" Click="ClearSelection_Click" />
+                                <Button x:Name="ExportSelectedButton"
+                                        Content="Export selected…"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Click="ExportSelected_Click" />
+                            </WrapPanel>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="Activity / Chain of Work">
+                        <Grid Background="{StaticResource PanelBrush}">
+                            <TextBox x:Name="ActivityTextBox"
+                                     Margin="10"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     FontFamily="Cascadia Mono, Consolas"
+                                     Background="#0A0E13" />
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="Evidence Rules">
+                        <ScrollViewer Background="{StaticResource PanelBrush}">
+                            <StackPanel Margin="22" MaxWidth="900" HorizontalAlignment="Left">
+                                <TextBlock Text="Evidence semantics" FontSize="22" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                <TextBlock Margin="0,12,0,8" TextWrapping="Wrap"
+                                           Text="ForgeRecover creates a verified copy before parsing. Source and destination SHA-256 hashes must match. Analysis runs against working copies, never the original backup." />
+                                <TextBlock Margin="0,8" TextWrapping="Wrap"
+                                           Text="Recovered means the record or file is present in the authorized logical backup being analyzed. Empty message text is not automatically labeled deleted. Unsupported schemas return warnings instead of fabricated data." />
+                                <TextBlock Margin="0,8" TextWrapping="Wrap"
+                                           Text="The workbench does not bypass passcodes, Activation Lock, backup encryption, iCloud authentication, or account protections. Use it only on devices and backups you own or are explicitly authorized to examine." />
+                                <TextBlock Margin="0,8" TextWrapping="Wrap"
+                                           Text="Every artifact retains a stable ID, source database or backup path, source row ID when available, UTC timestamp basis, and recovery-status metadata." />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="#111820" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <Grid Margin="12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusTextBlock" VerticalAlignment="Center" Text="Ready" />
+                <ProgressBar x:Name="BusyProgressBar"
+                             Grid.Column="1"
+                             Width="180"
+                             Height="8"
+                             IsIndeterminate="True"
+                             Visibility="Collapsed" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
