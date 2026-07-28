@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   test-and-publish:
@@ -31,26 +32,44 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore CLI
-        run: dotnet restore Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj
+        run: dotnet restore Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj --runtime win-x64
 
       - name: Restore tests
         run: dotnet restore Windows/ForgeRecover/tests/ForgeRecover.Core.Tests/ForgeRecover.Core.Tests.csproj
 
       - name: Build CLI
-        run: dotnet build Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj --configuration Release --no-restore
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/diagnostics | Out-Null
+          dotnet build Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj --configuration Release --runtime win-x64 --no-restore 2>&1 |
+            Tee-Object -FilePath artifacts/diagnostics/build.log
+          exit $LASTEXITCODE
 
       - name: Run tests
+        if: steps.build.outcome == 'success'
         run: dotnet test Windows/ForgeRecover/tests/ForgeRecover.Core.Tests/ForgeRecover.Core.Tests.csproj --configuration Release --no-restore --logger "trx;LogFileName=forge-recover-tests.trx" --collect "XPlat Code Coverage"
 
       - name: Publish Windows x64 executable
+        if: steps.build.outcome == 'success'
         run: dotnet publish Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj --configuration Release --runtime win-x64 --self-contained false --no-restore --output artifacts/forge-recover-win-x64
 
       - name: Upload executable
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: forge-recover-win-x64
           path: artifacts/forge-recover-win-x64
           if-no-files-found: error
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-recover-diagnostics
+          path: artifacts/diagnostics
+          if-no-files-found: warn
 
       - name: Upload test results
         if: always()
@@ -59,3 +78,33 @@ jobs:
           name: forge-recover-test-results
           path: Windows/ForgeRecover/tests/ForgeRecover.Core.Tests/TestResults
           if-no-files-found: warn
+
+      - name: Report compiler failure on pull request
+        if: steps.build.outcome == 'failure' && github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $matches = Get-Content artifacts/diagnostics/build.log |
+            Select-String -Pattern 'error (CS|CA|NETSDK|NU)[0-9]+|error:' |
+            Select-Object -Last 80 |
+            ForEach-Object { $_.Line }
+          if (-not $matches) {
+            $matches = Get-Content artifacts/diagnostics/build.log | Select-Object -Last 80
+          }
+          $body = @(
+            '### ForgeRecover compiler diagnostics',
+            '',
+            '```text',
+            ($matches -join "`n"),
+            '```'
+          ) -join "`n"
+          $body | Set-Content artifacts/diagnostics/pr-comment.md
+          gh pr comment $env:PR_NUMBER --repo $env:REPOSITORY --body-file artifacts/diagnostics/pr-comment.md
+
+      - name: Enforce build gate
+        if: steps.build.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
