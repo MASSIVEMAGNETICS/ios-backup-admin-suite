@@ -15,7 +15,12 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $cliProject = Join-Path $root 'src\ForgeRecover.Cli\ForgeRecover.Cli.csproj'
 $appProject = Join-Path $root 'src\ForgeRecover.App\ForgeRecover.App.csproj'
 $testProject = Join-Path $root 'tests\ForgeRecover.Core.Tests\ForgeRecover.Core.Tests.csproj'
-$suiteOutput = Join-Path $root "artifacts\forge-recover-windows-$Runtime"
+$platformName = if ($Runtime.StartsWith('win-', [StringComparison]::OrdinalIgnoreCase)) {
+    'windows-' + $Runtime.Substring(4)
+} else {
+    $Runtime
+}
+$suiteOutput = Join-Path $root "artifacts\forge-recover-$platformName"
 $cliOutput = Join-Path $suiteOutput 'cli'
 $appOutput = Join-Path $suiteOutput 'workbench'
 $selfContainedValue = $SelfContained.IsPresent.ToString().ToLowerInvariant()
