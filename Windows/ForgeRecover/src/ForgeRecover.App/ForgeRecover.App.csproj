@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>ForgeRecover.App</RootNamespace>
+    <AssemblyName>ForgeRecover.Workbench</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The WPF window temporarily owns a CancellationTokenSource only while an
+         operation is active; ExecuteBusyAsync disposes it in a finally block. -->
+    <NoWarn>$(NoWarn);CA1001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeRecover.Core\ForgeRecover.Core.csproj" />
+  </ItemGroup>
+</Project>
