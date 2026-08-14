@@ -29,7 +29,9 @@ internal static class Program
                 "unlock-backup" => await UnlockBackupAsync(options).ConfigureAwait(false),
                 "recover-sqlite" => await RecoverSqliteAsync(options).ConfigureAwait(false),
                 "recover-rows" => await RecoverRowsAsync(options).ConfigureAwait(false),
-                "validate-corpus" => await ValidateCorpusAsync(options).ConfigureAwait(false),
+                "recover-ios" => await RecoverIosAsync(options).ConfigureAwait(false),
+                "validate-corpus" => await ValidateFragmentCorpusAsync(options).ConfigureAwait(false),
+                "validate-row-corpus" => await ValidateRowCorpusAsync(options).ConfigureAwait(false),
                 _ => Unknown(args[0])
             };
         }
@@ -99,10 +101,7 @@ internal static class Program
         Console.WriteLine($"Validated WAL frames: {report.WalFramesValidated}");
         Console.WriteLine($"Committed WAL transactions: {report.WalTransactionsCommitted}");
         Console.WriteLine($"Report: {output}");
-        foreach (var warning in report.Warnings)
-        {
-            Console.WriteLine("WARNING: " + warning);
-        }
+        PrintWarnings(report.Warnings);
         return 0;
     }
 
@@ -110,51 +109,98 @@ internal static class Program
     {
         var database = options.Required("db");
         var output = Path.GetFullPath(options.Required("out"));
-        var recoveryOptions = new SQLiteRowRecoveryOptions
-        {
-            MaximumRows = options.GetInt("max-rows", 20_000),
-            MaximumWalFrames = options.GetInt("max-wal-frames", 250_000),
-            MaximumOverflowPagesPerRecord = options.GetInt("max-overflow-pages", 16_384),
-            MaximumTextCharactersPerValue = options.GetInt("max-text-chars", 1_000_000),
-            IncludeCurrentWalRows = options.Has("include-current-wal"),
-            IncludeHistoricalRowsStillCurrent = options.Has("include-still-current"),
-            IncludeFreelistCandidates = !options.Has("no-freelist-candidates"),
-            IncludeBTreeFreeSpaceCandidates = !options.Has("no-btree-free-space"),
-            ScanUnstructuredFreelistPages = !options.Has("no-unstructured-freelist")
-        };
-
         var report = await new SQLiteRowRecoveryEngine().RecoverAsync(
             database,
             options.Get("wal"),
-            recoveryOptions).ConfigureAwait(false);
+            BuildRowOptions(options)).ConfigureAwait(false);
         Directory.CreateDirectory(Path.GetDirectoryName(output) ?? Environment.CurrentDirectory);
         await File.WriteAllTextAsync(output, JsonSerializer.Serialize(report, JsonOptions)).ConfigureAwait(false);
 
-        Console.WriteLine($"Schema-aware rows/candidates: {report.Rows.Count}");
-        Console.WriteLine($"Current rows indexed for comparison: {report.CurrentRowsIndexed}");
-        Console.WriteLine($"Validated WAL frames: {report.WalFramesValidated}");
-        Console.WriteLine($"Committed WAL transactions: {report.WalTransactionsCommitted}");
-        foreach (var group in report.Rows.GroupBy(row => row.RecoveryStatus).OrderBy(group => group.Key, StringComparer.Ordinal))
-            Console.WriteLine($"  {group.Key}: {group.Count()}");
+        PrintRowSummary(report);
         Console.WriteLine($"Report: {output}");
-        foreach (var warning in report.Warnings)
-            Console.WriteLine("WARNING: " + warning);
         Console.WriteLine("Evidence note: reconstructed SQLite rows are not automatically labeled deleted SMS/iMessages; artifact correlation is a separate proof step.");
         return 0;
     }
 
-    private static async Task<int> ValidateCorpusAsync(Options options)
+    private static async Task<int> RecoverIosAsync(Options options)
+    {
+        var database = options.Required("db");
+        var output = options.Required("out");
+        var result = await new IOSArtifactRecoveryPipeline().RunAsync(
+            database,
+            output,
+            options.Get("wal"),
+            BuildRowOptions(options)).ConfigureAwait(false);
+
+        Console.WriteLine($"Reconstructed SQLite rows/candidates: {result.ReconstructedRows}");
+        Console.WriteLine($"Correlated iOS artifact candidates: {result.CorrelatedArtifacts}");
+        Console.WriteLine($"Row report: {result.RowRecoveryReport}");
+        Console.WriteLine($"Correlation report: {result.CorrelationReport}");
+        Console.WriteLine($"Artifact exports: {result.ArtifactExports.OutputRoot}");
+        Console.WriteLine("Evidence note: correlation identifies schema-consistent historical artifact candidates; it does not assert deletion without independent corroboration.");
+        return 0;
+    }
+
+    private static async Task<int> ValidateFragmentCorpusAsync(Options options)
     {
         var root = options.Required("root");
         var output = Path.GetFullPath(options.Required("out"));
         var runner = new SQLiteRecoveryCorpusRunner();
         var report = await runner.RunAsync(root).ConfigureAwait(false);
         await runner.SaveReportAsync(report, output).ConfigureAwait(false);
-        Console.WriteLine($"Corpus cases: {report.Cases}");
+        Console.WriteLine($"Fragment corpus cases: {report.Cases}");
         Console.WriteLine($"Passed: {report.Passed}");
         Console.WriteLine($"Failed: {report.Failed}");
         Console.WriteLine($"Report: {output}");
         return report.IsValid ? 0 : 5;
+    }
+
+    private static async Task<int> ValidateRowCorpusAsync(Options options)
+    {
+        var root = options.Required("root");
+        var output = Path.GetFullPath(options.Required("out"));
+        var runner = new SQLiteRowRecoveryCorpusRunner();
+        var report = await runner.RunAsync(root).ConfigureAwait(false);
+        await runner.SaveReportAsync(report, output).ConfigureAwait(false);
+        Console.WriteLine($"Typed row corpus cases: {report.Cases}");
+        Console.WriteLine($"Passed: {report.Passed}");
+        Console.WriteLine($"Failed: {report.Failed}");
+        if (report.IosVersions.Count > 0)
+            Console.WriteLine("iOS coverage: " + string.Join(", ", report.IosVersions.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}")));
+        if (report.DeviceModels.Count > 0)
+            Console.WriteLine("Device coverage: " + string.Join(", ", report.DeviceModels.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}")));
+        Console.WriteLine($"Report: {output}");
+        return report.IsValid ? 0 : 5;
+    }
+
+    private static SQLiteRowRecoveryOptions BuildRowOptions(Options options) => new()
+    {
+        MaximumRows = options.GetInt("max-rows", 20_000),
+        MaximumWalFrames = options.GetInt("max-wal-frames", 250_000),
+        MaximumOverflowPagesPerRecord = options.GetInt("max-overflow-pages", 16_384),
+        MaximumTextCharactersPerValue = options.GetInt("max-text-chars", 1_000_000),
+        MaximumFreelistPagesToTraverse = options.GetInt("max-freelist-pages", 1_000_000),
+        IncludeCurrentWalRows = options.Has("include-current-wal"),
+        IncludeHistoricalRowsStillCurrent = options.Has("include-still-current"),
+        IncludeFreelistCandidates = !options.Has("no-freelist-candidates"),
+        IncludeBTreeFreeSpaceCandidates = !options.Has("no-btree-free-space"),
+        ScanUnstructuredFreelistPages = !options.Has("no-unstructured-freelist")
+    };
+
+    private static void PrintRowSummary(SQLiteRowRecoveryReport report)
+    {
+        Console.WriteLine($"Schema-aware rows/candidates: {report.Rows.Count}");
+        Console.WriteLine($"Current rows indexed for comparison: {report.CurrentRowsIndexed}");
+        Console.WriteLine($"Validated WAL frames: {report.WalFramesValidated}");
+        Console.WriteLine($"Committed WAL transactions: {report.WalTransactionsCommitted}");
+        foreach (var group in report.Rows.GroupBy(row => row.RecoveryStatus).OrderBy(group => group.Key, StringComparer.Ordinal))
+            Console.WriteLine($"  {group.Key}: {group.Count()}");
+        PrintWarnings(report.Warnings);
+    }
+
+    private static void PrintWarnings(IEnumerable<string> warnings)
+    {
+        foreach (var warning in warnings) Console.WriteLine("WARNING: " + warning);
     }
 
     private static char[] ReadPassword(string? environmentVariable)
@@ -205,21 +251,36 @@ internal static class Program
         || value.Equals("-h", StringComparison.OrdinalIgnoreCase);
 
     private static void PrintHelp() => Console.WriteLine("""
-        ForgeRecover Recovery — authorized encrypted-backup unlock and SQLite history recovery
+        ForgeRecover Recovery — authorized encrypted-backup unlock and SQLite historical recovery
 
         Usage:
           forge-recover-recovery unlock-backup --backup PATH --out PATH [--mode core|all] [--password-env NAME] [--python PATH] [--helper PATH]
           forge-recover-recovery recover-sqlite --db FILE --out REPORT.json [--wal FILE] [--min-chars N] [--max-fragments N] [--include-current-wal] [--include-uncommitted-wal] [--no-utf16]
-          forge-recover-recovery recover-rows --db FILE --out REPORT.json [--wal FILE] [--max-rows N] [--include-current-wal] [--include-still-current] [--no-freelist-candidates] [--no-btree-free-space]
+          forge-recover-recovery recover-rows --db FILE --out REPORT.json [--wal FILE] [ROW OPTIONS]
+          forge-recover-recovery recover-ios --db FILE --out OUTPUT_DIRECTORY [--wal FILE] [ROW OPTIONS]
           forge-recover-recovery validate-corpus --root CORPUS --out REPORT.json
+          forge-recover-recovery validate-row-corpus --root CORPUS --out REPORT.json
+
+        Row options:
+          --max-rows N
+          --max-wal-frames N
+          --max-overflow-pages N
+          --max-text-chars N
+          --max-freelist-pages N
+          --include-current-wal
+          --include-still-current
+          --no-freelist-candidates
+          --no-btree-free-space
+          --no-unstructured-freelist
 
         Evidence semantics:
           - unlock-backup requires the existing backup password; it does not guess or bypass it.
           - decrypted output is a derived working copy, never the original evidence object.
           - recover-sqlite emits classified text fragments from freelist, b-tree free space, and checksum-valid WAL history.
           - recover-rows decodes structurally valid table-leaf cells, SQLite record headers/serial types, typed columns, and overflow chains.
-          - historical_row_absent_current means a structurally reconstructed row was present in historical SQLite state and no same rowid exists in the current mapped table. It is not by itself proof of a deleted SMS/iMessage.
-          - validate-corpus only passes explicit known-positive / known-negative controlled cases.
+          - recover-ios correlates mapped historical rows against recognized Messages, CallHistory, and AddressBook schemas and exports candidates as JSON/CSV/HTML.
+          - historical_row_absent_current means a structurally reconstructed row was present in historical SQLite state and no same rowid exists in the current mapped table. It is not by itself proof that a user deleted the artifact.
+          - validate-row-corpus checks explicit typed positive/negative assertions and reports iOS/device coverage; a large corpus claim is valid only when real authorized cases are present and pass.
         """);
 
     private sealed class Options
