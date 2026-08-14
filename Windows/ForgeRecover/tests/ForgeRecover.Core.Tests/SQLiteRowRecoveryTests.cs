@@ -94,15 +94,17 @@ public sealed class SQLiteRowRecoveryTests : IDisposable
         Execute(connection, "INSERT INTO message(body) VALUES ('UNCHANGED_440');");
         Execute(connection, "CREATE TABLE unrelated(value TEXT);");
 
-        var report = await new SQLiteRowRecoveryEngine().RecoverAsync(
+        var report = await new SQLiteRowRecoveryService().RecoverAsync(
             database,
             database + "-wal",
             new SQLiteRowRecoveryOptions { IncludeHistoricalRowsStillCurrent = true });
         Assert.Contains(report.Rows, row =>
-            row.TableName == "message"
+            row.SourceKind == SQLiteRowRecoverySourceKind.WalHistoricalRow
+            && row.TableName == "message"
             && row.RowId == 1
             && row.RecoveryStatus == "historical_row_still_current"
-            && row.Columns.Any(column => column.Value.TextValue == "UNCHANGED_440"));
+            && row.Columns.Any(column => column.Value.TextValue == "UNCHANGED_440")
+            && row.Metadata["temporal_role"] == "historical_observation_that_remained_current");
     }
 
     [Fact]
