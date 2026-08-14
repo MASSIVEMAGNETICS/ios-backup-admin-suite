@@ -28,6 +28,7 @@ internal static class Program
             {
                 "unlock-backup" => await UnlockBackupAsync(options).ConfigureAwait(false),
                 "recover-sqlite" => await RecoverSqliteAsync(options).ConfigureAwait(false),
+                "recover-rows" => await RecoverRowsAsync(options).ConfigureAwait(false),
                 "validate-corpus" => await ValidateCorpusAsync(options).ConfigureAwait(false),
                 _ => Unknown(args[0])
             };
@@ -105,6 +106,43 @@ internal static class Program
         return 0;
     }
 
+    private static async Task<int> RecoverRowsAsync(Options options)
+    {
+        var database = options.Required("db");
+        var output = Path.GetFullPath(options.Required("out"));
+        var recoveryOptions = new SQLiteRowRecoveryOptions
+        {
+            MaximumRows = options.GetInt("max-rows", 20_000),
+            MaximumWalFrames = options.GetInt("max-wal-frames", 250_000),
+            MaximumOverflowPagesPerRecord = options.GetInt("max-overflow-pages", 16_384),
+            MaximumTextCharactersPerValue = options.GetInt("max-text-chars", 1_000_000),
+            IncludeCurrentWalRows = options.Has("include-current-wal"),
+            IncludeHistoricalRowsStillCurrent = options.Has("include-still-current"),
+            IncludeFreelistCandidates = !options.Has("no-freelist-candidates"),
+            IncludeBTreeFreeSpaceCandidates = !options.Has("no-btree-free-space"),
+            ScanUnstructuredFreelistPages = !options.Has("no-unstructured-freelist")
+        };
+
+        var report = await new SQLiteRowRecoveryEngine().RecoverAsync(
+            database,
+            options.Get("wal"),
+            recoveryOptions).ConfigureAwait(false);
+        Directory.CreateDirectory(Path.GetDirectoryName(output) ?? Environment.CurrentDirectory);
+        await File.WriteAllTextAsync(output, JsonSerializer.Serialize(report, JsonOptions)).ConfigureAwait(false);
+
+        Console.WriteLine($"Schema-aware rows/candidates: {report.Rows.Count}");
+        Console.WriteLine($"Current rows indexed for comparison: {report.CurrentRowsIndexed}");
+        Console.WriteLine($"Validated WAL frames: {report.WalFramesValidated}");
+        Console.WriteLine($"Committed WAL transactions: {report.WalTransactionsCommitted}");
+        foreach (var group in report.Rows.GroupBy(row => row.RecoveryStatus).OrderBy(group => group.Key, StringComparer.Ordinal))
+            Console.WriteLine($"  {group.Key}: {group.Count()}");
+        Console.WriteLine($"Report: {output}");
+        foreach (var warning in report.Warnings)
+            Console.WriteLine("WARNING: " + warning);
+        Console.WriteLine("Evidence note: reconstructed SQLite rows are not automatically labeled deleted SMS/iMessages; artifact correlation is a separate proof step.");
+        return 0;
+    }
+
     private static async Task<int> ValidateCorpusAsync(Options options)
     {
         var root = options.Required("root");
@@ -125,17 +163,13 @@ internal static class Program
         {
             var fromEnvironment = Environment.GetEnvironmentVariable(environmentVariable);
             if (string.IsNullOrEmpty(fromEnvironment))
-            {
                 throw new ArgumentException($"Environment variable {environmentVariable} is empty or missing.");
-            }
             return fromEnvironment.ToCharArray();
         }
 
         if (Console.IsInputRedirected)
-        {
             throw new ArgumentException(
                 "Interactive password input is unavailable. Use --password-env NAME; passwords are never accepted on argv.");
-        }
 
         Console.Write("Backup password: ");
         var characters = new List<char>();
@@ -176,13 +210,15 @@ internal static class Program
         Usage:
           forge-recover-recovery unlock-backup --backup PATH --out PATH [--mode core|all] [--password-env NAME] [--python PATH] [--helper PATH]
           forge-recover-recovery recover-sqlite --db FILE --out REPORT.json [--wal FILE] [--min-chars N] [--max-fragments N] [--include-current-wal] [--include-uncommitted-wal] [--no-utf16]
+          forge-recover-recovery recover-rows --db FILE --out REPORT.json [--wal FILE] [--max-rows N] [--include-current-wal] [--include-still-current] [--no-freelist-candidates] [--no-btree-free-space]
           forge-recover-recovery validate-corpus --root CORPUS --out REPORT.json
 
         Evidence semantics:
           - unlock-backup requires the existing backup password; it does not guess or bypass it.
           - decrypted output is a derived working copy, never the original evidence object.
-          - recover-sqlite emits classified fragments from freelist, b-tree free space, and checksum-valid WAL history.
-          - a fragment is not automatically a reconstructed deleted row or message.
+          - recover-sqlite emits classified text fragments from freelist, b-tree free space, and checksum-valid WAL history.
+          - recover-rows decodes structurally valid table-leaf cells, SQLite record headers/serial types, typed columns, and overflow chains.
+          - historical_row_absent_current means a structurally reconstructed row was present in historical SQLite state and no same rowid exists in the current mapped table. It is not by itself proof of a deleted SMS/iMessage.
           - validate-corpus only passes explicit known-positive / known-negative controlled cases.
         """);
 
