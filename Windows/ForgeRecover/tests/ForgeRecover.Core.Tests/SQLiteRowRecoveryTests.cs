@@ -46,11 +46,11 @@ public sealed class SQLiteRowRecoveryTests : IDisposable
         Assert.True(File.Exists(wal));
         var report = await new SQLiteRowRecoveryEngine().RecoverAsync(database, wal);
 
-        var recovered = Assert.Single(report.Rows.Where(row =>
+        var recovered = Assert.Single(report.Rows, row =>
             row.SourceKind == SQLiteRowRecoverySourceKind.WalHistoricalRow
             && row.TableName == "message"
             && row.RowId == 1
-            && row.RecoveryStatus == "historical_row_absent_current"));
+            && row.RecoveryStatus == "historical_row_absent_current");
         Assert.True(recovered.OverflowPagesRead > 0);
         Assert.Equal(6, recovered.Columns.Count);
         Assert.Equal(longBody, recovered.Columns[0].Value.TextValue);
