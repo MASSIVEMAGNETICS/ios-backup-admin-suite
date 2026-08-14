@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
@@ -72,11 +71,11 @@ public sealed class SQLiteRowRecoveryOptions
 
     internal void Validate()
     {
-        if (MaximumRows < 1) throw new ArgumentOutOfRangeException(nameof(MaximumRows));
-        if (MaximumWalFrames < 1) throw new ArgumentOutOfRangeException(nameof(MaximumWalFrames));
-        if (MaximumOverflowPagesPerRecord < 1) throw new ArgumentOutOfRangeException(nameof(MaximumOverflowPagesPerRecord));
-        if (MaximumTextCharactersPerValue < 16) throw new ArgumentOutOfRangeException(nameof(MaximumTextCharactersPerValue));
-        if (MaximumFreelistPagesToTraverse < 1) throw new ArgumentOutOfRangeException(nameof(MaximumFreelistPagesToTraverse));
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaximumRows, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaximumWalFrames, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaximumOverflowPagesPerRecord, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaximumTextCharactersPerValue, 16);
+        ArgumentOutOfRangeException.ThrowIfLessThan(MaximumFreelistPagesToTraverse, 1);
     }
 }
 
@@ -225,6 +224,7 @@ public sealed class SQLiteRowRecoveryEngine
         if (options.IncludeBTreeFreeSpaceCandidates && rows.Count < options.MaximumRows)
         {
             ScanCurrentBTreeFreeSpace(
+                dbPath,
                 ownerMap,
                 schema,
                 currentRows,
@@ -256,7 +256,7 @@ public sealed class SQLiteRowRecoveryEngine
             rows);
     }
 
-    private static IReadOnlyList<TableSchema> LoadSchema(string databasePath, List<string> warnings)
+    private static List<TableSchema> LoadSchema(string databasePath, List<string> warnings)
     {
         var tables = new List<TableSchema>();
         try
@@ -272,9 +272,7 @@ public sealed class SQLiteRowRecoveryEngine
             using var reader = command.ExecuteReader();
             var raw = new List<(string Name, int RootPage, string Sql)>();
             while (reader.Read())
-            {
                 raw.Add((reader.GetString(0), reader.GetInt32(1), reader.IsDBNull(2) ? string.Empty : reader.GetString(2)));
-            }
             reader.Close();
 
             foreach (var item in raw)
@@ -339,8 +337,7 @@ public sealed class SQLiteRowRecoveryEngine
                 if (headerOffset >= usablePageSize) continue;
                 var pageType = span[headerOffset];
                 if (pageType == 0x0d) continue;
-                if (pageType != 0x05) continue;
-                if (headerOffset + 12 > usablePageSize) continue;
+                if (pageType != 0x05 || headerOffset + 12 > usablePageSize) continue;
 
                 var cellCount = BinaryPrimitives.ReadUInt16BigEndian(span.Slice(headerOffset + 3, 2));
                 var pointerBase = headerOffset + 12;
@@ -489,6 +486,7 @@ public sealed class SQLiteRowRecoveryEngine
                     DecodeUnownedCandidateLeafPage(
                         leafPage.Value,
                         leaf,
+                        dbReader.Path,
                         dbReader.ReadDatabasePage,
                         schema,
                         currentRows,
@@ -531,6 +529,7 @@ public sealed class SQLiteRowRecoveryEngine
     private static void DecodeUnownedCandidateLeafPage(
         ReadOnlyMemory<byte> page,
         uint pageNumber,
+        string sourceFile,
         Func<uint, ReadOnlyMemory<byte>?> pageResolver,
         IReadOnlyList<TableSchema> schema,
         IReadOnlyDictionary<string, Dictionary<long, string>> currentRows,
@@ -553,7 +552,7 @@ public sealed class SQLiteRowRecoveryEngine
                 record,
                 mapping,
                 SQLiteRowRecoverySourceKind.FreelistLeafRowCandidate,
-                ((RandomPageReader.Target)pageResolver.Target!).Path,
+                sourceFile,
                 checked(((long)pageNumber - 1) * pageSize + cell.Offset),
                 pageNumber,
                 null,
@@ -566,6 +565,7 @@ public sealed class SQLiteRowRecoveryEngine
     }
 
     private static void ScanCurrentBTreeFreeSpace(
+        string databasePath,
         IReadOnlyDictionary<uint, TableSchema> ownerMap,
         IReadOnlyList<TableSchema> schema,
         IReadOnlyDictionary<string, Dictionary<long, string>> currentRows,
@@ -606,7 +606,7 @@ public sealed class SQLiteRowRecoveryEngine
                     SQLiteRowRecoverySourceKind.BTreeUnallocatedRowCandidate,
                     .60,
                     "btree_unallocated_row_candidate",
-                    "database_current_page",
+                    databasePath,
                     checked(((long)owned.Key - 1) * pageSize),
                     null,
                     null,
@@ -644,7 +644,7 @@ public sealed class SQLiteRowRecoveryEngine
                     SQLiteRowRecoverySourceKind.BTreeFreeblockRowCandidate,
                     .42,
                     "btree_freeblock_row_candidate",
-                    "database_current_page",
+                    databasePath,
                     checked(((long)owned.Key - 1) * pageSize),
                     null,
                     null,
@@ -683,7 +683,7 @@ public sealed class SQLiteRowRecoveryEngine
         {
             if (!codec.TryDecodeTableLeafCell(page, offset, pageResolver, out var record, out var consumed, out _) || record is null)
                 continue;
-            if (consumed < 4 || offset + Math.Min(consumed, 1) > end) continue;
+            if (consumed < 4 || offset > end - consumed) continue;
             var mapping = knownTable is not null
                 ? record.Values.Count == knownTable.Columns.Count
                     ? new SchemaMapping(knownTable, new[] { knownTable.Name }, "current_btree_page_owner", 1.0)
@@ -843,28 +843,30 @@ public sealed class SQLiteRowRecoveryEngine
             }));
     }
 
-    private static IEnumerable<CellPointer> EnumerateLeafCells(
+    private static List<CellPointer> EnumerateLeafCells(
         ReadOnlyMemory<byte> page,
         uint pageNumber,
         int usablePageSize,
         List<string> warnings)
     {
+        var result = new List<CellPointer>();
         var span = page.Span;
         var headerOffset = pageNumber == 1 ? 100 : 0;
-        if (headerOffset + 8 > usablePageSize || span[headerOffset] != 0x0d) yield break;
+        if (headerOffset + 8 > usablePageSize || span[headerOffset] != 0x0d) return result;
         var count = BinaryPrimitives.ReadUInt16BigEndian(span.Slice(headerOffset + 3, 2));
         var pointerBase = headerOffset + 8;
         if (pointerBase + count * 2 > usablePageSize)
         {
             warnings.Add($"Table leaf page {pageNumber} has an invalid cell-pointer array.");
-            yield break;
+            return result;
         }
         for (var index = 0; index < count; index++)
         {
             var offset = BinaryPrimitives.ReadUInt16BigEndian(span.Slice(pointerBase + index * 2, 2));
             if (offset == 0 || offset >= usablePageSize) continue;
-            yield return new CellPointer(index, offset);
+            result.Add(new CellPointer(index, offset));
         }
+        return result;
     }
 
     private static bool IsTableLeaf(ReadOnlySpan<byte> page, uint pageNumber, int usablePageSize)
@@ -1077,7 +1079,7 @@ public sealed class SQLiteRowRecoveryEngine
 
         private ReadOnlyMemory<byte>? ReadAt(long offset, int count)
         {
-            if (offset < 0 || offset + count > _length) return null;
+            if (offset < 0 || offset > _length - count) return null;
             var buffer = new byte[count];
             var total = 0;
             while (total < count)
@@ -1090,11 +1092,6 @@ public sealed class SQLiteRowRecoveryEngine
         }
 
         public void Dispose() => _handle.Dispose();
-
-        public sealed class Target(RandomPageReader reader)
-        {
-            public string Path => reader.Path;
-        }
     }
 
     private sealed record TableSchema(string Name, int RootPage, string Sql, IReadOnlyList<ColumnSchema> Columns);
