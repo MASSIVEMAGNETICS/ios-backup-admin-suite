@@ -1,3 +1,0 @@
-# ForgeRecover Recovery Target
-
-Placeholder.
