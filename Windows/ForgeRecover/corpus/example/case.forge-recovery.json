@@ -1,0 +1,9 @@
+{
+  "id": "generated-example",
+  "database": "example.db",
+  "wal": "example.db-wal",
+  "expected_contains": ["CONTROLLED_DELETED_MARKER_001"],
+  "expected_absent": ["NEVER_CREATED_MARKER_001"],
+  "minimum_text_characters": 8,
+  "include_uncommitted_wal": false
+}

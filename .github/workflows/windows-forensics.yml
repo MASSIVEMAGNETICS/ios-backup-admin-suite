@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - agent/windows-forensics-suite
+      - agent/encrypted-backup-sqlite-recovery
     paths:
       - "Windows/ForgeRecover/**"
       - ".github/workflows/windows-forensics.yml"
@@ -20,7 +21,7 @@ permissions:
 jobs:
   test-and-publish:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -31,10 +32,22 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate encrypted-backup helper dependency
+        shell: pwsh
+        run: |
+          python -m pip install -r Windows/ForgeRecover/tools/requirements-unlock.txt
+          python Windows/ForgeRecover/tools/forge_ios_backup_unlock.py --self-test
+
       - name: Restore Windows products
         shell: pwsh
         run: |
           dotnet restore Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj --runtime win-x64
+          dotnet restore Windows/ForgeRecover/src/ForgeRecover.RecoveryCli/ForgeRecover.RecoveryCli.csproj --runtime win-x64
           dotnet restore Windows/ForgeRecover/src/ForgeRecover.App/ForgeRecover.App.csproj --runtime win-x64
           dotnet restore Windows/ForgeRecover/tests/ForgeRecover.Core.Tests/ForgeRecover.Core.Tests.csproj
 
@@ -52,13 +65,18 @@ jobs:
           $logs += '===== CLI BUILD ====='
           $logs += $cliOutput
 
+          $recoveryOutput = dotnet build Windows/ForgeRecover/src/ForgeRecover.RecoveryCli/ForgeRecover.RecoveryCli.csproj --configuration Release --runtime win-x64 --no-restore 2>&1
+          $recoveryExit = $LASTEXITCODE
+          $logs += '===== RECOVERY CLI BUILD ====='
+          $logs += $recoveryOutput
+
           $appOutput = dotnet build Windows/ForgeRecover/src/ForgeRecover.App/ForgeRecover.App.csproj --configuration Release --runtime win-x64 --no-restore 2>&1
           $appExit = $LASTEXITCODE
           $logs += '===== WORKBENCH BUILD ====='
           $logs += $appOutput
 
           $logs | Tee-Object -FilePath artifacts/diagnostics/build.log | Write-Host
-          if ($cliExit -ne 0 -or $appExit -ne 0) { exit 1 }
+          if ($cliExit -ne 0 -or $recoveryExit -ne 0 -or $appExit -ne 0) { exit 1 }
 
       - name: Run deterministic tests
         if: steps.build.outcome == 'success'
@@ -70,8 +88,10 @@ jobs:
         run: |
           $suite = 'artifacts/forge-recover-windows-x64'
           $cli = Join-Path $suite 'cli'
+          $recovery = Join-Path $suite 'recovery'
           $workbench = Join-Path $suite 'workbench'
-          New-Item -ItemType Directory -Force $cli, $workbench | Out-Null
+          $tools = Join-Path $suite 'tools'
+          New-Item -ItemType Directory -Force $cli, $recovery, $workbench, $tools | Out-Null
 
           dotnet publish Windows/ForgeRecover/src/ForgeRecover.Cli/ForgeRecover.Cli.csproj `
             --configuration Release `
@@ -79,6 +99,13 @@ jobs:
             --self-contained false `
             --no-restore `
             --output $cli
+
+          dotnet publish Windows/ForgeRecover/src/ForgeRecover.RecoveryCli/ForgeRecover.RecoveryCli.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained false `
+            --no-restore `
+            --output $recovery
 
           dotnet publish Windows/ForgeRecover/src/ForgeRecover.App/ForgeRecover.App.csproj `
             --configuration Release `
@@ -88,12 +115,19 @@ jobs:
             --output $workbench
 
           Copy-Item Windows/ForgeRecover/README.md (Join-Path $suite 'README.md')
+          Copy-Item Windows/ForgeRecover/RECOVERY.md (Join-Path $suite 'RECOVERY.md')
           if (Test-Path Windows/ForgeRecover/WORKBENCH.md) {
             Copy-Item Windows/ForgeRecover/WORKBENCH.md (Join-Path $suite 'WORKBENCH.md')
           }
+          Copy-Item Windows/ForgeRecover/tools/forge_ios_backup_unlock.py $tools
+          Copy-Item Windows/ForgeRecover/tools/requirements-unlock.txt $tools
+          Copy-Item Windows/ForgeRecover/tools/setup-unlock.ps1 $tools
 
           & (Join-Path $cli 'forge-recover.exe') help | Tee-Object -FilePath (Join-Path $suite 'cli-smoke-test.txt')
           if ($LASTEXITCODE -ne 0) { throw 'Published CLI smoke test failed.' }
+
+          & (Join-Path $recovery 'forge-recover-recovery.exe') help | Tee-Object -FilePath (Join-Path $suite 'recovery-cli-smoke-test.txt')
+          if ($LASTEXITCODE -ne 0) { throw 'Published recovery CLI smoke test failed.' }
 
           $hashLines = Get-ChildItem $suite -File -Recurse |
             Sort-Object FullName |
@@ -106,6 +140,9 @@ jobs:
 
           if (-not (Test-Path (Join-Path $workbench 'ForgeRecover.Workbench.exe'))) {
             throw 'Workbench executable was not published.'
+          }
+          if (-not (Test-Path (Join-Path $recovery 'forge-recover-recovery.exe'))) {
+            throw 'Recovery executable was not published.'
           }
 
       - name: Upload Windows suite
@@ -142,10 +179,10 @@ jobs:
         run: |
           $matches = Get-Content artifacts/diagnostics/build.log |
             Select-String -Pattern 'error (CS|CA|NETSDK|NU|MC|XDG)[0-9]+|error:' |
-            Select-Object -Last 100 |
+            Select-Object -Last 120 |
             ForEach-Object { $_.Line }
           if (-not $matches) {
-            $matches = Get-Content artifacts/diagnostics/build.log | Select-Object -Last 100
+            $matches = Get-Content artifacts/diagnostics/build.log | Select-Object -Last 120
           }
           $body = @(
             '### ForgeRecover compiler diagnostics',
