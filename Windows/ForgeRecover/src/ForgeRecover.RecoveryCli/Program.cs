@@ -109,7 +109,7 @@ internal static class Program
     {
         var database = options.Required("db");
         var output = Path.GetFullPath(options.Required("out"));
-        var report = await new SQLiteRowRecoveryEngine().RecoverAsync(
+        var report = await new SQLiteRowRecoveryService().RecoverAsync(
             database,
             options.Get("wal"),
             BuildRowOptions(options)).ConfigureAwait(false);
@@ -277,9 +277,10 @@ internal static class Program
           - unlock-backup requires the existing backup password; it does not guess or bypass it.
           - decrypted output is a derived working copy, never the original evidence object.
           - recover-sqlite emits classified text fragments from freelist, b-tree free space, and checksum-valid WAL history.
-          - recover-rows decodes structurally valid table-leaf cells, SQLite record headers/serial types, typed columns, and overflow chains.
+          - recover-rows decodes structurally valid table-leaf cells, SQLite record headers/serial types, typed columns, overflow chains, and temporal WAL roles.
           - recover-ios correlates mapped historical rows against recognized Messages, CallHistory, and AddressBook schemas and exports candidates as JSON/CSV/HTML.
           - historical_row_absent_current means a structurally reconstructed row was present in historical SQLite state and no same rowid exists in the current mapped table. It is not by itself proof that a user deleted the artifact.
+          - historical_row_still_current means an earlier committed WAL observation remained the final current image for that page after one or more later transactions committed elsewhere.
           - validate-row-corpus checks explicit typed positive/negative assertions and reports iOS/device coverage; a large corpus claim is valid only when real authorized cases are present and pass.
         """);
 
