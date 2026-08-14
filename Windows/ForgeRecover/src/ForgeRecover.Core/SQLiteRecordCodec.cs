@@ -209,15 +209,15 @@ internal sealed class SQLiteRecordCodec
             var current = data[offset + index];
             if ((current & 0x80) == 0)
             {
-                value = (value << 7) | (ulong)current;
+                value = (value << 7) + current;
                 bytesRead = index + 1;
                 return true;
             }
-            value = (value << 7) | (ulong)(current & 0x7f);
+            value = (value << 7) + (uint)(current & 0x7f);
         }
 
         if (offset + 8 >= data.Length) return false;
-        value = (value << 8) | (ulong)data[offset + 8];
+        value = (value << 8) + data[offset + 8];
         bytesRead = 9;
         return true;
     }
