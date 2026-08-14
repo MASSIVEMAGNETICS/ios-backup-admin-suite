@@ -37,8 +37,8 @@ public sealed class IOSHistoricalArtifactCorrelationTests : IDisposable
 
         var rows = await new SQLiteRowRecoveryEngine().RecoverAsync(database, database + "-wal");
         var correlated = new IOSHistoricalArtifactCorrelator().Correlate(database, rows);
-        var artifact = Assert.Single(correlated.Artifacts.Where(item =>
-            item.Kind == ArtifactKind.Message && item.SourceRowId == 42));
+        var artifact = Assert.Single(correlated.Artifacts, item =>
+            item.Kind == ArtifactKind.Message && item.SourceRowId == 42);
 
         Assert.Equal("HISTORICAL_MESSAGE_440", artifact.Body);
         Assert.Equal("+14405551212", artifact.Primary);
@@ -76,8 +76,8 @@ public sealed class IOSHistoricalArtifactCorrelationTests : IDisposable
 
         var rows = await new SQLiteRowRecoveryEngine().RecoverAsync(database, database + "-wal");
         var correlated = new IOSHistoricalArtifactCorrelator().Correlate(database, rows);
-        var artifact = Assert.Single(correlated.Artifacts.Where(item =>
-            item.Kind == ArtifactKind.Call && item.SourceRowId == 11));
+        var artifact = Assert.Single(correlated.Artifacts, item =>
+            item.Kind == ArtifactKind.Call && item.SourceRowId == 11);
 
         Assert.Equal("+14405559876", artifact.Primary);
         Assert.Equal("Caller 440", artifact.Secondary);
@@ -115,8 +115,8 @@ public sealed class IOSHistoricalArtifactCorrelationTests : IDisposable
 
         var rows = await new SQLiteRowRecoveryEngine().RecoverAsync(database, database + "-wal");
         var correlated = new IOSHistoricalArtifactCorrelator().Correlate(database, rows);
-        var artifact = Assert.Single(correlated.Artifacts.Where(item =>
-            item.Kind == ArtifactKind.Contact && item.SourceRowId == 9));
+        var artifact = Assert.Single(correlated.Artifacts, item =>
+            item.Kind == ArtifactKind.Contact && item.SourceRowId == 9);
 
         Assert.Equal("Recovered Contact", artifact.Primary);
         Assert.Equal("Massive Magnetics", artifact.Secondary);
