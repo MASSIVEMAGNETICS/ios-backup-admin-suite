@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ForgeRecover.RecoveryCli</RootNamespace>
+    <AssemblyName>forge-recover-recovery</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ForgeRecover.Core\ForgeRecover.Core.csproj" />
+  </ItemGroup>
+</Project>
