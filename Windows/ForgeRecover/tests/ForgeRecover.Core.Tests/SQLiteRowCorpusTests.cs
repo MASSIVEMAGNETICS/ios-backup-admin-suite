@@ -36,8 +36,8 @@ public sealed class SQLiteRowCorpusTests : IDisposable
                     new[]
                     {
                         new SQLiteRowCorpusColumnExpectation("text", Text: "CORPUS_DELETED_440"),
-                        new SQLiteRowCorpusColumnExpectation("handle_id", Integer: 9),
-                        new SQLiteRowCorpusColumnExpectation("is_from_me", Integer: 0)
+                        new SQLiteRowCorpusColumnExpectation("handle_id", IntegerValue: 9),
+                        new SQLiteRowCorpusColumnExpectation("is_from_me", IntegerValue: 0)
                     })
             },
             new[]
