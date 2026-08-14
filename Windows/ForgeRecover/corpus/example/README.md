@@ -1,0 +1,1 @@
+This example intentionally contains only a manifest schema, not personal backup data. Create controlled database/WAL fixtures locally with known inserted/deleted markers before running `validate-corpus`.
