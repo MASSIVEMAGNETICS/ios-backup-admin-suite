@@ -25,7 +25,7 @@ public sealed class IOSArtifactRecoveryPipeline
         var output = Path.GetFullPath(outputRoot);
         Directory.CreateDirectory(output);
 
-        var rowReport = await new SQLiteRowRecoveryEngine()
+        var rowReport = await new SQLiteRowRecoveryService()
             .RecoverAsync(database, walPath, options, cancellationToken)
             .ConfigureAwait(false);
         var correlation = new IOSHistoricalArtifactCorrelator().Correlate(database, rowReport);
