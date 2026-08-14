@@ -4,6 +4,7 @@ using System.Text;
 
 namespace ForgeRecover.Core;
 
+#pragma warning disable CA1720 // SQLite calls this storage class INTEGER; preserve specification terminology.
 public enum SQLiteDecodedStorageClass
 {
     Null,
@@ -12,6 +13,7 @@ public enum SQLiteDecodedStorageClass
     Text,
     Blob
 }
+#pragma warning restore CA1720
 
 public sealed record SQLiteDecodedValue(
     int ColumnIndex,
@@ -42,6 +44,10 @@ internal enum SQLiteTextEncoding
 
 internal sealed class SQLiteRecordCodec
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly UnicodeEncoding StrictUtf16Le = new(false, false, true);
+    private static readonly UnicodeEncoding StrictUtf16Be = new(true, false, true);
+
     private readonly int _usablePageSize;
     private readonly SQLiteTextEncoding _textEncoding;
     private readonly int _maximumOverflowPages;
@@ -53,9 +59,9 @@ internal sealed class SQLiteRecordCodec
         int maximumOverflowPages,
         int maximumTextCharacters)
     {
-        if (usablePageSize < 480) throw new ArgumentOutOfRangeException(nameof(usablePageSize));
-        if (maximumOverflowPages < 1) throw new ArgumentOutOfRangeException(nameof(maximumOverflowPages));
-        if (maximumTextCharacters < 16) throw new ArgumentOutOfRangeException(nameof(maximumTextCharacters));
+        ArgumentOutOfRangeException.ThrowIfLessThan(usablePageSize, 480);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumOverflowPages, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumTextCharacters, 16);
         _usablePageSize = usablePageSize;
         _textEncoding = textEncoding;
         _maximumOverflowPages = maximumOverflowPages;
@@ -180,14 +186,13 @@ internal sealed class SQLiteRecordCodec
         {
             var serialType = serialTypes[index];
             if (!TrySerialLength(serialType, out var byteLength)) return false;
-            if (dataOffset < 0 || dataOffset + byteLength > payload.Length) return false;
+            if (dataOffset < 0 || byteLength < 0 || dataOffset > payload.Length - byteLength) return false;
             var data = payload.Slice(dataOffset, byteLength);
             if (!TryDecodeValue(index, serialType, data, out var value)) return false;
             decoded.Add(value!);
             dataOffset += byteLength;
         }
 
-        if (dataOffset > payload.Length) return false;
         values = decoded;
         return true;
     }
@@ -204,7 +209,7 @@ internal sealed class SQLiteRecordCodec
             var current = data[offset + index];
             if ((current & 0x80) == 0)
             {
-                value = (value << 7) | current;
+                value = (value << 7) | (ulong)current;
                 bytesRead = index + 1;
                 return true;
             }
@@ -212,15 +217,15 @@ internal sealed class SQLiteRecordCodec
         }
 
         if (offset + 8 >= data.Length) return false;
-        value = (value << 8) | data[offset + 8];
+        value = (value << 8) | (ulong)data[offset + 8];
         bytesRead = 9;
         return true;
     }
 
     public static int LocalPayloadBytes(int payloadLength, int usablePageSize)
     {
-        if (payloadLength < 0) throw new ArgumentOutOfRangeException(nameof(payloadLength));
-        if (usablePageSize < 480) throw new ArgumentOutOfRangeException(nameof(usablePageSize));
+        ArgumentOutOfRangeException.ThrowIfNegative(payloadLength);
+        ArgumentOutOfRangeException.ThrowIfLessThan(usablePageSize, 480);
         var maxLocal = usablePageSize - 35;
         if (payloadLength <= maxLocal) return payloadLength;
 
@@ -279,7 +284,15 @@ internal sealed class SQLiteRecordCodec
                     return true;
                 }
 
-                var text = DecodeText(data);
+                string text;
+                try
+                {
+                    text = DecodeText(data);
+                }
+                catch (DecoderFallbackException)
+                {
+                    return false;
+                }
                 var truncated = text.Length > _maximumTextCharacters;
                 if (truncated) text = text[.._maximumTextCharacters];
                 value = new SQLiteDecodedValue(
@@ -301,33 +314,62 @@ internal sealed class SQLiteRecordCodec
     {
         return _textEncoding switch
         {
-            SQLiteTextEncoding.Utf8 => Encoding.UTF8.GetString(data),
-            SQLiteTextEncoding.Utf16LittleEndian => Encoding.Unicode.GetString(data),
-            SQLiteTextEncoding.Utf16BigEndian => Encoding.BigEndianUnicode.GetString(data),
-            _ => Encoding.UTF8.GetString(data)
+            SQLiteTextEncoding.Utf8 => StrictUtf8.GetString(data),
+            SQLiteTextEncoding.Utf16LittleEndian => StrictUtf16Le.GetString(data),
+            SQLiteTextEncoding.Utf16BigEndian => StrictUtf16Be.GetString(data),
+            _ => StrictUtf8.GetString(data)
         };
     }
 
     private static bool TrySerialLength(ulong serialType, out int byteLength)
     {
-        byteLength = serialType switch
+        switch (serialType)
         {
-            0 => 0,
-            1 => 1,
-            2 => 2,
-            3 => 3,
-            4 => 4,
-            5 => 6,
-            6 => 8,
-            7 => 8,
-            8 => 0,
-            9 => 0,
-            10 => -1,
-            11 => -1,
-            _ when (serialType & 1) == 0 => checked((int)((serialType - 12) / 2)),
-            _ => checked((int)((serialType - 13) / 2))
-        };
-        return byteLength >= 0;
+            case 0:
+            case 8:
+            case 9:
+                byteLength = 0;
+                return true;
+            case 1:
+                byteLength = 1;
+                return true;
+            case 2:
+                byteLength = 2;
+                return true;
+            case 3:
+                byteLength = 3;
+                return true;
+            case 4:
+                byteLength = 4;
+                return true;
+            case 5:
+                byteLength = 6;
+                return true;
+            case 6:
+            case 7:
+                byteLength = 8;
+                return true;
+            case 10:
+            case 11:
+                byteLength = -1;
+                return false;
+            default:
+                if (serialType < 12)
+                {
+                    byteLength = -1;
+                    return false;
+                }
+                var length = (serialType & 1) == 0
+                    ? (serialType - 12) / 2
+                    : (serialType - 13) / 2;
+                if (length > int.MaxValue)
+                {
+                    byteLength = -1;
+                    return false;
+                }
+                byteLength = (int)length;
+                return true;
+        }
     }
 
     private static long DecodeSignedBigEndian(ReadOnlySpan<byte> data)
